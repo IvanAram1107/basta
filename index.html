@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>¡BASTA! Online - P2P</title>
+  <!-- PeerJS para conexión Peer-to-Peer gratuita -->
+  <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --accent: #ef4444;
+      --accent-hover: #dc2626;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --warning: #f59e0b;
+      --success: #10b981;
+      --info: #3b82f6;
+    }
+    * { box-sizing: border-box; font-family: 'Segoe UI', system-ui, sans-serif; }
+    body { background: var(--bg); color: var(--text); margin: 0; padding: 20px; display: flex; justify-content: center; }
+    .container { width: 100%; max-width: 900px; margin-top: 30px; }
+    .card { background: var(--card); border-radius: 12px; padding: 24px; margin-bottom: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.4); }
+    h1, h2, h3 { text-align: center; margin-top: 0; }
+    
+    /* Indicador de Sala Fijo */
+    .room-badge {
+      position: fixed;
+      top: 15px;
+      left: 15px;
+      background: rgba(30, 41, 59, 0.95);
+      border: 1px solid #475569;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      z-index: 100;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    .room-badge strong { color: var(--warning); font-size: 0.95rem; }
+
+    /* Tablas de Puntuación */
+    .score-rules-table {
+      width: 100%;
+      margin-bottom: 24px;
+      border-collapse: separate;
+      border-spacing: 0;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .score-rules-table th {
+      background: #090d16;
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      padding: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .score-rules-table td {
+      background: #1e293b;
+      padding: 12px;
+      text-align: center;
+      font-weight: bold;
+      color: var(--warning);
+      font-size: 1rem;
+      border-top: 1px solid #334155;
+    }
+
+    .btn { background: var(--accent); color: white; border: none; padding: 12px 24px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 1rem; width: 100%; transition: 0.2s; }
+    .btn:hover { background: var(--accent-hover); }
+    .btn:disabled { background: #475569; color: #94a3b8; cursor: not-allowed; }
+    input[type="text"] { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #475569; background: #090d16; color: white; margin-bottom: 12px; font-size: 1rem; }
+    
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; }
+    .grid div { display: flex; flex-direction: column; }
+    .grid label { margin-bottom: 8px; font-size: 0.92rem; font-weight: 600; color: #cbd5e1; }
+
+    .hidden { display: none !important; }
+    
+    .spinner-box { font-size: 5rem; font-weight: bold; color: var(--warning); text-align: center; margin: 20px 0; background: #090d16; border-radius: 12px; padding: 20px; }
+    #cheat-alert { background: var(--accent); color: white; padding: 12px; border-radius: 8px; text-align: center; position: fixed; top: 15px; right: 15px; z-index: 1000; display: none; font-weight: bold; }
+    .timer-banner { background: var(--warning); color: #000; font-size: 1.4rem; font-weight: bold; text-align: center; padding: 12px; border-radius: 8px; margin-bottom: 18px; }
+    
+    /* Estilos de Revisión de Respuestas */
+    .self-review-list { list-style: none; padding: 0; margin: 20px 0; }
+    .self-review-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #090d16;
+      border: 1px solid #334155;
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .self-review-item:hover { border-color: var(--info); }
+    .self-review-item.invalid { text-decoration: line-through; color: var(--accent); background: rgba(239, 68, 68, 0.1); border-color: var(--accent); }
+
+    /* Modal Popup del Host */
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.85);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 2000;
+      padding: 20px;
+    }
+    .modal-content {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 24px;
+      width: 100%;
+      max-width: 850px;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+
+    table.review-tbl { width: 100%; border-collapse: collapse; margin-top: 16px; }
+    table.review-tbl th, table.review-tbl td { border: 1px solid #475569; padding: 10px; text-align: center; }
+    table.review-tbl th { background: #090d16; }
+    .invalid-word { text-decoration: line-through; color: var(--accent); cursor: pointer; background: rgba(239, 68, 68, 0.1); }
+    .valid-word { cursor: pointer; }
+    .badge { background: var(--success); padding: 4px 8px; border-radius: 4px; font-size: 0.85rem; }
+    .basta-hint { font-size: 0.85rem; color: var(--text-muted); text-align: center; margin-top: 10px; font-weight: 500; }
+  </style>
+</head>
+<body>
+
+<!-- Indicador de Sala Fijo en la Esquina -->
+<div id="room-badge" class="room-badge hidden">Sala: <strong id="lbl-room-badge"></strong></div>
+
+<!-- Alerta de Trampa -->
+<div id="cheat-alert">⚠️ <span id="cheat-msg"></span></div>
+
+<div class="container">
+  <h1>Basta!</h1>
+
+  <!-- LOBBY INICIAL -->
+  <div id="sec-lobby" class="card">
+    <h2>Reglas de Puntuación</h2>
+    <table class="score-rules-table">
+      <thead>
+        <tr>
+          <th>Respuesta Única</th>
+          <th>2 Iguales</th>
+          <th>3 Iguales</th>
+          <th>4+ Iguales</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>100 pts</td>
+          <td>50 pts</td>
+          <td>25 pts</td>
+          <td>10 pts</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Entrar al Juego</h2>
+    <input type="text" id="player-name" placeholder="Tu Nombre">
+    <input type="text" id="room-code" placeholder="Código de la Sala (ej. 123)">
+    <div style="display: flex; gap: 10px;">
+      <button class="btn" onclick="createRoom()">Crear Sala (Anfitrión)</button>
+      <button class="btn" style="background:var(--info)" onclick="joinRoom()">Unirse a Sala</button>
+    </div>
+  </div>
+
+  <!-- SALA DE ESPERA -->
+  <div id="sec-waiting" class="card hidden">
+    <h2>Esperando Jugadores...</h2>
+    <h3>Jugadores en la sala:</h3>
+    <ul id="player-list"></ul>
+    <button id="btn-start-spinner" class="btn hidden" onclick="hostStartSpinner()">Iniciar Ruleta de Letras</button>
+  </div>
+
+  <!-- RULETA DE LETRAS -->
+  <div id="sec-spinner" class="card hidden">
+    <h2>GIRANDO ABECEDARIO</h2>
+    <p>Turno de: <strong id="lbl-picker" style="color:var(--warning)"></strong> para detener la letra</p>
+    <div class="spinner-box" id="spinner-letter">A</div>
+    <button id="btn-stop-spinner" class="btn hidden" onclick="stopSpinner()">¡DETENER LETRA!</button>
+  </div>
+
+  <!-- PANTALLA DE JUEGO -->
+  <div id="sec-game" class="card hidden">
+    <div id="timer-box" class="timer-banner hidden">⏰ ¡BASTA ACTIVADO! Tiempo restante: <span id="timer-val">10</span>s</div>
+    <h2>Letra de la Ronda: <span id="lbl-current-letter" style="color:var(--warning); font-size:2rem;"></span></h2>
+    
+    <div class="grid">
+      <div><label for="cat-nombre">Nombre</label><input type="text" id="cat-nombre" class="cat-input" data-cat="Nombre"></div>
+      <div><label for="cat-apellido">Apellido</label><input type="text" id="cat-apellido" class="cat-input" data-cat="Apellido"></div>
+      <div><label for="cat-cosa">Cosa</label><input type="text" id="cat-cosa" class="cat-input" data-cat="Cosa"></div>
+      <div><label for="cat-ciudad">Ciudad o País</label><input type="text" id="cat-ciudad" class="cat-input" data-cat="Ciudad o País"></div>
+      <div><label for="cat-flor">Flor o Fruto</label><input type="text" id="cat-flor" class="cat-input" data-cat="Flor o Fruto"></div>
+      <div><label for="cat-animal">Animal</label><input type="text" id="cat-animal" class="cat-input" data-cat="Animal"></div>
+      <div><label for="cat-color">Color</label><input type="text" id="cat-color" class="cat-input" data-cat="Color"></div>
+    </div>
+    
+    <button id="btn-basta" class="btn" style="margin-top:24px; background:var(--warning); color:#000;" onclick="triggerBasta()" disabled>¡Basta!</button>
+    <p id="basta-hint" class="basta-hint">Llena todas las casillas iniciando con la letra de la ronda para activar ¡Basta!</p>
+  </div>
+
+  <!-- FASE DE AUTOREVISIÓN -->
+  <div id="sec-review" class="card hidden">
+    <h2>Revisión de Mis Respuestas</h2>
+    <p style="text-align:center; color:var(--text-muted)">Haz clic en cualquiera de tus respuestas si deseas marcarla como <strong>Incorrecta (0 pts)</strong>.</p>
+    
+    <div id="self-review-container"></div>
+
+    <button id="btn-host-review-modal" class="btn hidden" style="background:var(--info); margin-bottom:12px;" onclick="openHostModal()">🛠️ Ver/Modificar Respuestas de Todos (Solo Anfitrión)</button>
+    <button id="btn-finish-review" class="btn hidden" style="margin-top:10px;" onclick="hostCalculateResults()">Calcular Puntuación de la Ronda</button>
+  </div>
+
+  <!-- RESULTADOS DE LA RONDA -->
+  <div id="sec-results" class="card hidden">
+    <h2>Resultados de la Ronda</h2>
+    <div id="score-board"></div>
+    
+    <div style="display:flex; gap:10px; margin-top:20px;">
+      <button id="btn-next-round" class="btn hidden" style="background:var(--success)" onclick="hostStartSpinner()">Siguiente Ronda</button>
+      <button id="btn-end-game" class="btn hidden" style="background:var(--accent)" onclick="hostEndGame()">Finalizar Partida</button>
+    </div>
+  </div>
+
+  <!-- PANTALLA DE FIN DE JUEGO -->
+  <div id="sec-game-over" class="card hidden">
+    <h2>🏆 ¡PARTIDA FINALIZADA!</h2>
+    <h3>Clasificación Final:</h3>
+    <div id="final-score-board"></div>
+  </div>
+</div>
+
+<!-- MODAL EMERGENTE PARA EL ANFITRIÓN -->
+<div id="host-modal" class="modal-overlay hidden">
+  <div class="modal-content">
+    <h2>Panel de Validación del Anfitrión</h2>
+    <p style="text-align:center; color:var(--text-muted)">Haz clic en la palabra de cualquier jugador para marcarla como <strong>Válida / Inválida</strong>.</p>
+    <div style="overflow-x:auto;">
+      <table id="host-review-table" class="review-tbl"></table>
+    </div>
+    <button class="btn" style="margin-top:20px; background:var(--info);" onclick="closeHostModal()">Cerrar y Volver</button>
+  </div>
+</div>
+
+<script>
+  const ALPHABET = 'ABCDEFGHIJKLMNÑOPQRSTUVWXYZ'.split('');
+  const CATEGORIES = ["Nombre", "Apellido", "Cosa", "Ciudad o País", "Flor o Fruto", "Animal", "Color"];
+  const SPINNER_SYMBOLS = ['❓', '🎲', '🌀', '✨', '❓', '⚡'];
+  
+  let peer = null;
+  let isHost = false;
+  let myId = null;
+  let myName = '';
+  let roomCode = '';
+  let hostConn = null;
+  let guestConns = [];
+
+  let gameState = {
+    players: [], // [{ id, name, scoreHistory: [] }]
+    availableLetters: [...ALPHABET],
+    roundLetters: [],
+    turnIndex: 0,
+    currentLetter: '',
+    state: 'LOBBY',
+    answers: {},
+    invalidFlags: {},
+    timer: null
+  };
+
+  let spinnerInterval = null;
+  let gameActive = false;
+
+  // Anti-Cheat
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden && gameActive) reportCheat("Salió de la pestaña o minimizó el navegador.");
+  });
+  window.addEventListener("blur", () => {
+    if (gameActive) reportCheat("Perdió el foco de la ventana del juego.");
+  });
+
+  function reportCheat(reason) {
+    if (isHost) {
+      broadcastCheat(myName, reason);
+    } else if (hostConn) {
+      hostConn.send({ type: 'REPORT_CHEAT', reason });
+    }
+  }
+
+  function broadcastCheat(playerName, reason) {
+    const msg = `${playerName}: ${reason}`;
+    showCheatAlert(msg);
+    if (isHost) broadcast({ type: 'CHEAT_ALERT', msg });
+  }
+
+  function showCheatAlert(msg) {
+    const alertBox = document.getElementById("cheat-alert");
+    document.getElementById("cheat-msg").innerText = msg;
+    alertBox.style.display = "block";
+    setTimeout(() => { alertBox.style.display = "none"; }, 4000);
+  }
+
+  function createRoom() {
+    myName = document.getElementById("player-name").value.trim();
+    roomCode = document.getElementById("room-code").value.trim().toLowerCase();
+    if (!myName || !roomCode) return alert("Escribe tu nombre y el código de sala.");
+
+    isHost = true;
+    peer = new Peer('basta-room-' + roomCode);
+
+    peer.on('open', (id) => {
+      myId = id;
+      gameState.players.push({ id: myId, name: myName, scoreHistory: [] });
+      showRoomBadge(roomCode);
+      setupHostUI();
+    });
+
+    peer.on('connection', (conn) => {
+      guestConns.push(conn);
+      conn.on('data', (data) => handleHostIncomingData(conn, data));
+      conn.on('close', () => {
+        gameState.players = gameState.players.filter(p => p.id !== conn.peer);
+        broadcastState();
+      });
+    });
+
+    peer.on('error', () => alert("El código de sala ya está en uso. Intenta con otro."));
+  }
+
+  function joinRoom() {
+    myName = document.getElementById("player-name").value.trim();
+    roomCode = document.getElementById("room-code").value.trim().toLowerCase();
+    if (!myName || !roomCode) return alert("Escribe tu nombre y el código de sala.");
+
+    isHost = false;
+    peer = new Peer();
+
+    peer.on('open', (id) => {
+      myId = id;
+      hostConn = peer.connect('basta-room-' + roomCode);
+
+      hostConn.on('open', () => {
+        showRoomBadge(roomCode);
+        hostConn.send({ type: 'JOIN', name: myName });
+      });
+
+      hostConn.on('data', (data) => handleGuestIncomingData(data));
+      hostConn.on('close', () => alert("La conexión con el anfitrión se ha perdido."));
+    });
+
+    peer.on('error', () => alert("No se pudo conectar a la sala. Revisa el código."));
+  }
+
+  function showRoomBadge(code) {
+    const badge = document.getElementById("room-badge");
+    document.getElementById("lbl-room-badge").innerText = code.toUpperCase();
+    badge.classList.remove("hidden");
+  }
+
+  function handleHostIncomingData(conn, data) {
+    if (data.type === 'JOIN') {
+      gameState.players.push({ id: conn.peer, name: data.name, scoreHistory: [] });
+      broadcastState();
+    } else if (data.type === 'STOP_SPINNER') {
+      hostStopSpinner();
+    } else if (data.type === 'TRIGGER_BASTA') {
+      hostStartBastaTimer(conn.peer, data.answers);
+    } else if (data.type === 'SUBMIT_ANSWERS') {
+      gameState.answers[conn.peer] = data.answers;
+    } else if (data.type === 'TOGGLE_INVALID') {
+      if (!gameState.invalidFlags[data.category]) gameState.invalidFlags[data.category] = {};
+      gameState.invalidFlags[data.category][data.targetId] = data.isInvalid;
+      broadcastState();
+    } else if (data.type === 'REPORT_CHEAT') {
+      const p = gameState.players.find(x => x.id === conn.peer);
+      broadcastCheat(p ? p.name : 'Un jugador', data.reason);
+    }
+  }
+
+  function broadcast(msg) {
+    guestConns.forEach(c => c.send(msg));
+  }
+
+  function broadcastState() {
+    renderUI(gameState);
+    broadcast({ type: 'STATE_UPDATE', gameState });
+  }
+
+  function hostStartSpinner() {
+    if (gameState.availableLetters.length === 0) return alert("Se han agotado todas las letras.");
+    gameState.state = 'SPINNER';
+    gameState.answers = {};
+    gameState.invalidFlags = {};
+    broadcastState();
+  }
+
+  function hostStopSpinner() {
+    const randomIndex = Math.floor(Math.random() * gameState.availableLetters.length);
+    const letter = gameState.availableLetters[randomIndex];
+    
+    gameState.availableLetters = gameState.availableLetters.filter(l => l !== letter);
+    gameState.currentLetter = letter;
+    if (!gameState.roundLetters) gameState.roundLetters = [];
+    gameState.roundLetters.push(letter);
+
+    gameState.state = 'PLAYING';
+    broadcastState();
+  }
+
+  function hostStartBastaTimer(triggeredById, answers) {
+    if (gameState.state !== 'PLAYING') return;
+    gameState.state = 'COUNTDOWN';
+    if (answers) gameState.answers[triggeredById] = answers;
+
+    let timeLeft = 10;
+    broadcast({ type: 'TIMER_TICK', timeLeft });
+    renderTimer(timeLeft);
+
+    if (gameState.timer) clearInterval(gameState.timer);
+
+    gameState.timer = setInterval(() => {
+      timeLeft--;
+      broadcast({ type: 'TIMER_TICK', timeLeft });
+      renderTimer(timeLeft);
+
+      if (timeLeft <= 0) {
+        clearInterval(gameState.timer);
+        gameState.timer = null;
+        
+        submitLocalAnswers();
+        broadcast({ type: 'FORCE_SUBMIT' });
+
+        setTimeout(() => {
+          gameState.players.forEach(p => {
+            if (!gameState.answers[p.id]) gameState.answers[p.id] = {};
+          });
+          hostStartReview();
+        }, 1500);
+      }
+    }, 1000);
+  }
+
+  function hostStartReview() {
+    gameState.state = 'REVIEW';
+    broadcastState();
+  }
+
+  function hostCalculateResults() {
+    const roundScores = {};
+
+    CATEGORIES.forEach(cat => {
+      const wordCounts = {};
+      const categoryAnswers = {};
+
+      gameState.players.forEach(p => {
+        const raw = gameState.answers[p.id]?.[cat] || "";
+        const isInvalid = gameState.invalidFlags[cat]?.[p.id];
+        const word = raw.trim().toLowerCase();
+        
+        const startsWithLetter = word.toUpperCase().startsWith(gameState.currentLetter);
+
+        if (word && !isInvalid && startsWithLetter) {
+          wordCounts[word] = (wordCounts[word] || 0) + 1;
+          categoryAnswers[p.id] = word;
+        } else {
+          categoryAnswers[p.id] = null;
+        }
+      });
+
+      gameState.players.forEach(p => {
+        if (!roundScores[p.id]) roundScores[p.id] = 0;
+        const word = categoryAnswers[p.id];
+        if (word) {
+          const count = wordCounts[word];
+          let points = 0;
+          if (count === 1) points = 100;
+          else if (count === 2) points = 50;
+          else if (count === 3) points = 25;
+          else if (count >= 4) points = 10;
+
+          roundScores[p.id] += points;
+        }
+      });
+    });
+
+    gameState.players.forEach(p => {
+      if (!p.scoreHistory) p.scoreHistory = [];
+      p.scoreHistory.push(roundScores[p.id] || 0);
+    });
+
+    gameState.turnIndex = (gameState.turnIndex + 1) % gameState.players.length;
+    gameState.state = 'RESULTS';
+    broadcastState();
+  }
+
+  function hostEndGame() {
+    gameState.state = 'GAME_OVER';
+    broadcastState();
+  }
+
+  function handleGuestIncomingData(data) {
+    if (data.type === 'STATE_UPDATE') {
+      gameState = data.gameState;
+      renderUI(gameState);
+    } else if (data.type === 'TIMER_TICK') {
+      renderTimer(data.timeLeft);
+    } else if (data.type === 'FORCE_SUBMIT') {
+      submitLocalAnswers();
+    } else if (data.type === 'CHEAT_ALERT') {
+      showCheatAlert(data.msg);
+    }
+  }
+
+  function setupHostUI() {
+    document.getElementById("btn-start-spinner").classList.remove("hidden");
+    document.getElementById("btn-host-review-modal").classList.remove("hidden");
+    document.getElementById("btn-finish-review").classList.remove("hidden");
+    document.getElementById("btn-next-round").classList.remove("hidden");
+    document.getElementById("btn-end-game").classList.remove("hidden");
+    renderUI(gameState);
+  }
+
+  function checkBastaValidity() {
+    const inputs = Array.from(document.querySelectorAll(".cat-input"));
+    const letter = (gameState.currentLetter || '').toUpperCase();
+    const hint = document.getElementById("basta-hint");
+    const btnBasta = document.getElementById("btn-basta");
+
+    if (!letter) {
+      btnBasta.disabled = true;
+      return;
+    }
+
+    const allFilledAndValid = inputs.every(input => {
+      const val = input.value.trim().toUpperCase();
+      return val.length > 0 && val.startsWith(letter);
+    });
+
+    if (gameState.state === 'PLAYING' || gameState.state === 'COUNTDOWN') {
+      btnBasta.disabled = !allFilledAndValid;
+      if (hint) {
+        if (allFilledAndValid) {
+          hint.innerText = "¡Listo! Ya puedes presionar ¡Basta!";
+          hint.style.color = "var(--success)";
+        } else {
+          hint.innerText = `Llena todas las casillas iniciando con la letra '${letter}' para activar ¡Basta!`;
+          hint.style.color = "var(--text-muted)";
+        }
+      }
+    }
+  }
+
+  function renderUI(state) {
+    if (state.state !== 'COUNTDOWN') {
+      const banner = document.getElementById("timer-box");
+      if (banner) banner.classList.add("hidden");
+    }
+
+    document.querySelectorAll(".card").forEach(c => c.classList.add("hidden"));
+
+    if (state.state === 'LOBBY') {
+      document.getElementById("sec-waiting").classList.remove("hidden");
+      document.getElementById("player-list").innerHTML = state.players.map(p => {
+        const total = (p.scoreHistory || []).reduce((a,b) => a+b, 0);
+        return `<li>${p.name} — <strong>${total} pts</strong></li>`;
+      }).join('');
+    } 
+    else if (state.state === 'SPINNER') {
+      document.getElementById("sec-spinner").classList.remove("hidden");
+      const activePicker = state.players[state.turnIndex];
+      document.getElementById("lbl-picker").innerText = activePicker.name;
+
+      const isMyTurn = (activePicker.id === myId);
+      document.getElementById("btn-stop-spinner").classList.toggle("hidden", !isMyTurn);
+
+      document.querySelectorAll(".cat-input").forEach(i => {
+        i.value = "";
+        i.disabled = false;
+        i.oninput = checkBastaValidity;
+      });
+      checkBastaValidity();
+
+      document.getElementById("spinner-letter").innerText = "A";
+      clearInterval(spinnerInterval);
+      let idx = 0;
+      spinnerInterval = setInterval(() => {
+        document.getElementById("spinner-letter").innerText = SPINNER_SYMBOLS[idx % SPINNER_SYMBOLS.length];
+        idx++;
+      }, 90);
+    } 
+    else if (state.state === 'PLAYING' || state.state === 'COUNTDOWN') {
+      clearInterval(spinnerInterval);
+      gameActive = true;
+      document.getElementById("sec-game").classList.remove("hidden");
+      document.getElementById("lbl-current-letter").innerText = state.currentLetter;
+
+      document.querySelectorAll(".cat-input").forEach(i => {
+        i.oninput = checkBastaValidity;
+      });
+      checkBastaValidity();
+    } 
+    else if (state.state === 'REVIEW') {
+      gameActive = false;
+      document.getElementById("sec-review").classList.remove("hidden");
+      renderSelfReview(state);
+      if (isHost) renderHostReviewTable(state);
+    } 
+    else if (state.state === 'RESULTS') {
+      gameActive = false;
+      document.getElementById("sec-results").classList.remove("hidden");
+      renderScoreHistoryTable(state, "score-board");
+    }
+    else if (state.state === 'GAME_OVER') {
+      gameActive = false;
+      document.getElementById("sec-game-over").classList.remove("hidden");
+      renderScoreHistoryTable(state, "final-score-board");
+    }
+  }
+
+  function renderSelfReview(state) {
+    const container = document.getElementById("self-review-container");
+    const myAnswers = state.answers[myId] || {};
+    
+    let html = `<div class="self-review-list">`;
+    CATEGORIES.forEach(cat => {
+      const word = (myAnswers[cat] || "").trim();
+      const isInvalid = state.invalidFlags[cat]?.[myId];
+      const cssClass = isInvalid ? "self-review-item invalid" : "self-review-item";
+      
+      html += `
+        <div class="${cssClass}" onclick="toggleMyAnswer('${cat}', ${!isInvalid})">
+          <span><strong>${cat}:</strong> ${word || '<em>(Sin respuesta)</em>'}</span>
+          <span>${isInvalid ? '❌ Inválida' : '✅ Válida'}</span>
+        </div>
+      `;
+    });
+    html += `</div>`;
+    container.innerHTML = html;
+  }
+
+  function toggleMyAnswer(category, isInvalid) {
+    toggleInvalid(category, myId, isInvalid);
+  }
+
+  function renderHostReviewTable(state) {
+    const table = document.getElementById("host-review-table");
+    let html = `<thead><tr><th>Categoría</th>`;
+    state.players.forEach(p => { html += `<th>${p.name}</th>`; });
+    html += `</tr></thead><tbody>`;
+
+    CATEGORIES.forEach(cat => {
+      html += `<tr><td><strong>${cat}</strong></td>`;
+      state.players.forEach(p => {
+        const word = (state.answers[p.id]?.[cat] || "").trim();
+        const startsWithLetter = word.toUpperCase().startsWith(state.currentLetter);
+        const isManuallyInvalid = state.invalidFlags[cat]?.[p.id];
+        const isInvalid = !word || !startsWithLetter || isManuallyInvalid;
+
+        const cssClass = isInvalid ? "invalid-word" : "valid-word";
+        html += `<td class="${cssClass}" onclick="toggleInvalid('${cat}', '${p.id}', ${!isManuallyInvalid})">
+                  ${word || '<em>(Vacío)</em>'} ${isManuallyInvalid ? '❌' : ''}
+                </td>`;
+      });
+      html += `</tr>`;
+    });
+    html += `</tbody>`;
+    table.innerHTML = html;
+  }
+
+  function openHostModal() {
+    renderHostReviewTable(gameState);
+    document.getElementById("host-modal").classList.remove("hidden");
+  }
+
+  function closeHostModal() {
+    document.getElementById("host-modal").classList.add("hidden");
+  }
+
+  // --- RENDERIZADO DE TABLA DE PUNTUACIONES SOLO CON LA LETRA ---
+  function renderScoreHistoryTable(state, targetElementId) {
+    const container = document.getElementById(targetElementId);
+    const roundLetters = state.roundLetters || [];
+    const numRounds = roundLetters.length;
+
+    const sortedPlayers = [...state.players].sort((a,b) => {
+      const totalA = (a.scoreHistory || []).reduce((x,y) => x+y, 0);
+      const totalB = (b.scoreHistory || []).reduce((x,y) => x+y, 0);
+      return totalB - totalA;
+    });
+
+    if (numRounds === 0 || sortedPlayers.length === 0) {
+      container.innerHTML = `<p style="text-align:center; color:var(--text-muted)">Sin rondas jugadas aún.</p>`;
+      return;
+    }
+
+    let html = `<div style="overflow-x:auto;"><table class="score-rules-table" style="margin-top:10px;"><thead><tr>`;
+    html += `<th>Jugador</th>`;
+    roundLetters.forEach((letra) => {
+      html += `<th>${letra}</th>`;
+    });
+    html += `<th>Total</th></tr></thead><tbody>`;
+
+    sortedPlayers.forEach(p => {
+      const history = p.scoreHistory || [];
+      const total = history.reduce((a,b) => a+b, 0);
+      
+      html += `<tr>`;
+      html += `<td style="font-weight:bold; color:var(--text); text-align:left;">${p.name}</td>`;
+      
+      for (let i = 0; i < numRounds; i++) {
+        const pts = history[i] !== undefined ? history[i] : 0;
+        html += `<td style="color:var(--text-muted); font-weight:normal;">${pts} pts</td>`;
+      }
+
+      html += `<td style="font-weight:bold; color:var(--warning);">${total} pts</td>`;
+      html += `</tr>`;
+    });
+
+    html += `</tbody></table></div>`;
+    container.innerHTML = html;
+  }
+
+  function stopSpinner() {
+    clearInterval(spinnerInterval);
+    if (isHost) {
+      hostStopSpinner();
+    } else {
+      hostConn.send({ type: 'STOP_SPINNER' });
+    }
+  }
+
+  function triggerBasta() {
+    const answers = getAnswersFromInput();
+    document.querySelectorAll(".cat-input").forEach(i => i.disabled = true);
+    document.getElementById("btn-basta").disabled = true;
+
+    if (isHost) {
+      hostStartBastaTimer(myId, answers);
+    } else {
+      hostConn.send({ type: 'TRIGGER_BASTA', answers });
+    }
+  }
+
+  function renderTimer(timeLeft) {
+    const banner = document.getElementById("timer-box");
+    banner.classList.remove("hidden");
+    document.getElementById("timer-val").innerText = timeLeft;
+  }
+
+  function submitLocalAnswers() {
+    const answers = getAnswersFromInput();
+    document.querySelectorAll(".cat-input").forEach(i => i.disabled = true);
+    document.getElementById("btn-basta").disabled = true;
+
+    if (isHost) {
+      gameState.answers[myId] = answers;
+    } else if (hostConn) {
+      hostConn.send({ type: 'SUBMIT_ANSWERS', answers });
+    }
+  }
+
+  function getAnswersFromInput() {
+    const answers = {};
+    document.querySelectorAll(".cat-input").forEach(i => {
+      answers[i.dataset.cat] = i.value;
+    });
+    return answers;
+  }
+
+  function toggleInvalid(category, targetId, isInvalid) {
+    if (isHost) {
+      if (!gameState.invalidFlags[category]) gameState.invalidFlags[category] = {};
+      gameState.invalidFlags[category][targetId] = isInvalid;
+      broadcastState();
+    } else {
+      if (!gameState.invalidFlags[category]) gameState.invalidFlags[category] = {};
+      gameState.invalidFlags[category][targetId] = isInvalid;
+      renderSelfReview(gameState);
+      hostConn.send({ type: 'TOGGLE_INVALID', category, targetId, isInvalid });
+    }
+  }
+</script>
+</body>
+</html>
