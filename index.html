@@ -3,9 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>¡BASTA! Online - P2P</title>
-    <!-- PeerJS para conexión Peer-to-Peer gratuita -->
-    <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js"></script>
+    <title>¡BASTA! Online</title>
+    <!-- MQTT via WebSockets para comunicación instantánea entre redes -->
+    <script src="[suspicious link removed]"></script>
     <style>
       :root {
         --bg: #0f172a;
@@ -273,7 +273,7 @@
     </style>
   </head>
   <body>
-    <!-- Indicador de Sala Fijo en la Esquina -->
+    <!-- Indicador de Sala Fijo -->
     <div id="room-badge" class="room-badge hidden">
       Sala: <strong id="lbl-room-badge"></strong>
     </div>
@@ -549,33 +549,13 @@
       ];
       const SPINNER_SYMBOLS = ["❓", "🎲", "🌀", "✨", "❓", "⚡"];
 
-      // Servidores STUN públicos de Google para conectar entre distintas redes (Wi-Fi vs Datos)
-      const PEER_CONFIG = {
-        config: {
-          iceServers: [
-            {
-              urls: "stun:stun1.l.google.com:19302",
-            },
-            {
-              urls: "stun:stun2.l.google.com:19302",
-            },
-            {
-              urls: "stun:stun3.l.google.com:19302",
-            },
-            {
-              urls: "stun:stun4.l.google.com:19302",
-            },
-          ],
-        },
-      };
-
-      let peer = null;
+      let mqttClient = null;
       let isHost = false;
-      let myId = null;
+      let myId = "";
       let myName = "";
       let roomCode = "";
-      let hostConn = null;
-      let guestConns = [];
+      let topicHost = "";
+      let topicGuests = "";
 
       let gameState = {
         players: [],
@@ -604,15 +584,15 @@
       function reportCheat(reason) {
         if (isHost) {
           broadcastCheat(myName, reason);
-        } else if (hostConn) {
-          hostConn.send({ type: "REPORT_CHEAT", reason });
+        } else {
+          sendToHost({ type: "REPORT_CHEAT", fromId: myId, reason });
         }
       }
 
       function broadcastCheat(playerName, reason) {
         const msg = `${playerName}: ${reason}`;
         showCheatAlert(msg);
-        if (isHost) broadcast({ type: "CHEAT_ALERT", msg });
+        if (isHost) sendToGuests({ type: "CHEAT_ALERT", msg });
       }
 
       function showCheatAlert(msg) {
@@ -650,36 +630,40 @@
         document.getElementById("btn-create").innerText = "Creando Sala...";
 
         isHost = true;
-        if (peer) peer.destroy();
-        peer = new Peer("basta-room-" + roomCode, PEER_CONFIG);
+        myId = "host_" + Math.random().toString(36).substr(2, 9);
+        topicHost = `basta_game_${roomCode}_host`;
+        topicGuests = `basta_game_${roomCode}_guests`;
 
-        peer.on("open", (id) => {
-          myId = id;
-          gameState.players.push({ id: myId, name: myName, scoreHistory: [] });
-          showRoomBadge(roomCode);
-          setupHostUI();
+        if (mqttClient) mqttClient.end();
+
+        mqttClient = mqtt.connect("wss://broker.emqx.io:8084/mqtt", {
+          clientId: myId,
+          clean: true,
+          connectTimeout: 5000,
         });
 
-        peer.on("connection", (conn) => {
-          guestConns.push(conn);
-          conn.on("data", (data) => handleHostIncomingData(conn, data));
-          conn.on("close", () => {
-            gameState.players = gameState.players.filter(
-              (p) => p.id !== conn.peer,
-            );
-            broadcastState();
+        mqttClient.on("connect", () => {
+          mqttClient.subscribe(topicHost, (err) => {
+            if (!err) {
+              gameState.players = [
+                { id: myId, name: myName, scoreHistory: [] },
+              ];
+              showRoomBadge(roomCode);
+              setupHostUI();
+            }
           });
         });
 
-        peer.on("error", (err) => {
+        mqttClient.on("message", (topic, message) => {
+          try {
+            const data = JSON.parse(message.toString());
+            handleHostIncomingData(data);
+          } catch (e) {}
+        });
+
+        mqttClient.on("error", (err) => {
           resetLobbyButtons();
-          if (err.type === "unavailable-id") {
-            alert(
-              "El código de sala ya está activo. Intenta unirte o elige otro código.",
-            );
-          } else {
-            alert("Error al crear la sala: " + (err.message || err.type));
-          }
+          alert("Error de conexión al servidor de salas.");
         });
       }
 
@@ -694,52 +678,60 @@
 
         const btnJoin = document.getElementById("btn-join");
         btnJoin.disabled = true;
-        btnJoin.innerText = "Conectando a la sala...";
+        btnJoin.innerText = "Conectando...";
 
         isHost = false;
-        if (peer) peer.destroy();
-        peer = new Peer(PEER_CONFIG);
+        myId = "guest_" + Math.random().toString(36).substr(2, 9);
+        topicHost = `basta_game_${roomCode}_host`;
+        topicGuests = `basta_game_${roomCode}_guests`;
 
-        let connectTimeout = setTimeout(() => {
-          if (!hostConn || !hostConn.open) {
-            resetLobbyButtons();
-            alert(
-              "No se pudo conectar a la sala. Verifica que el código sea correcto y que el anfitrión haya creado la sala primero.",
-            );
-          }
-        }, 8000);
+        if (mqttClient) mqttClient.end();
 
-        peer.on("open", (id) => {
-          myId = id;
-          hostConn = peer.connect("basta-room-" + roomCode, { reliable: true });
+        mqttClient = mqtt.connect("wss://broker.emqx.io:8084/mqtt", {
+          clientId: myId,
+          clean: true,
+          connectTimeout: 5000,
+        });
 
-          hostConn.on("open", () => {
-            clearTimeout(connectTimeout);
-            showRoomBadge(roomCode);
-            hostConn.send({ type: "JOIN", name: myName });
-          });
+        let joinInterval = null;
 
-          hostConn.on("data", (data) => handleGuestIncomingData(data));
-          hostConn.on("close", () =>
-            alert("La conexión con el anfitrión se ha perdido."),
-          );
-          hostConn.on("error", (err) => {
-            clearTimeout(connectTimeout);
-            resetLobbyButtons();
-            alert("Error al intentar unirse: " + err);
+        mqttClient.on("connect", () => {
+          mqttClient.subscribe(topicGuests, (err) => {
+            if (!err) {
+              showRoomBadge(roomCode);
+              sendToHost({ type: "JOIN", fromId: myId, name: myName });
+
+              joinInterval = setInterval(() => {
+                if (gameState.players.length === 0) {
+                  sendToHost({ type: "JOIN", fromId: myId, name: myName });
+                } else {
+                  clearInterval(joinInterval);
+                }
+              }, 1200);
+
+              setTimeout(() => {
+                if (gameState.players.length === 0) {
+                  clearInterval(joinInterval);
+                  resetLobbyButtons();
+                  alert(
+                    "No se encontró la sala. Revisa que el anfitrión haya creado la sala primero.",
+                  );
+                }
+              }, 8000);
+            }
           });
         });
 
-        peer.on("error", (err) => {
-          clearTimeout(connectTimeout);
+        mqttClient.on("message", (topic, message) => {
+          try {
+            const data = JSON.parse(message.toString());
+            handleGuestIncomingData(data);
+          } catch (e) {}
+        });
+
+        mqttClient.on("error", (err) => {
           resetLobbyButtons();
-          if (err.type === "peer-unavailable") {
-            alert(
-              `La sala "${roomCode}" no existe o el anfitrión no está conectado.`,
-            );
-          } else {
-            alert("Error de conexión: " + (err.message || err.type));
-          }
+          alert("Error de conexión a la sala.");
         });
       }
 
@@ -750,38 +742,67 @@
         badge.classList.remove("hidden");
       }
 
-      function handleHostIncomingData(conn, data) {
+      function broadcastState() {
+        renderUI(gameState);
+        if (mqttClient && isHost) {
+          mqttClient.publish(
+            topicGuests,
+            JSON.stringify({ type: "STATE_UPDATE", gameState }),
+          );
+        }
+      }
+
+      function sendToHost(msg) {
+        if (mqttClient) {
+          mqttClient.publish(topicHost, JSON.stringify(msg));
+        }
+      }
+
+      function sendToGuests(msg) {
+        if (mqttClient && isHost) {
+          mqttClient.publish(topicGuests, JSON.stringify(msg));
+        }
+      }
+
+      function handleHostIncomingData(data) {
         if (data.type === "JOIN") {
-          gameState.players.push({
-            id: conn.peer,
-            name: data.name,
-            scoreHistory: [],
-          });
+          let existing = gameState.players.find((p) => p.id === data.fromId);
+          if (!existing) {
+            gameState.players.push({
+              id: data.fromId,
+              name: data.name,
+              scoreHistory: [],
+            });
+          }
           broadcastState();
         } else if (data.type === "STOP_SPINNER") {
           hostStopSpinner();
         } else if (data.type === "TRIGGER_BASTA") {
-          hostStartBastaTimer(conn.peer, data.answers);
+          hostStartBastaTimer(data.fromId, data.answers);
         } else if (data.type === "SUBMIT_ANSWERS") {
-          gameState.answers[conn.peer] = data.answers;
+          gameState.answers[data.fromId] = data.answers;
         } else if (data.type === "TOGGLE_INVALID") {
           if (!gameState.invalidFlags[data.category])
             gameState.invalidFlags[data.category] = {};
           gameState.invalidFlags[data.category][data.targetId] = data.isInvalid;
           broadcastState();
         } else if (data.type === "REPORT_CHEAT") {
-          const p = gameState.players.find((x) => x.id === conn.peer);
+          const p = gameState.players.find((x) => x.id === data.fromId);
           broadcastCheat(p ? p.name : "Un jugador", data.reason);
         }
       }
 
-      function broadcast(msg) {
-        guestConns.forEach((c) => c.send(msg));
-      }
-
-      function broadcastState() {
-        renderUI(gameState);
-        broadcast({ type: "STATE_UPDATE", gameState });
+      function handleGuestIncomingData(data) {
+        if (data.type === "STATE_UPDATE") {
+          gameState = data.gameState;
+          renderUI(gameState);
+        } else if (data.type === "TIMER_TICK") {
+          renderTimer(data.timeLeft);
+        } else if (data.type === "FORCE_SUBMIT") {
+          submitLocalAnswers();
+        } else if (data.type === "CHEAT_ALERT") {
+          showCheatAlert(data.msg);
+        }
       }
 
       function hostStartSpinner() {
@@ -816,14 +837,14 @@
         if (answers) gameState.answers[triggeredById] = answers;
 
         let timeLeft = 10;
-        broadcast({ type: "TIMER_TICK", timeLeft });
+        sendToGuests({ type: "TIMER_TICK", timeLeft });
         renderTimer(timeLeft);
 
         if (gameState.timer) clearInterval(gameState.timer);
 
         gameState.timer = setInterval(() => {
           timeLeft--;
-          broadcast({ type: "TIMER_TICK", timeLeft });
+          sendToGuests({ type: "TIMER_TICK", timeLeft });
           renderTimer(timeLeft);
 
           if (timeLeft <= 0) {
@@ -831,7 +852,7 @@
             gameState.timer = null;
 
             submitLocalAnswers();
-            broadcast({ type: "FORCE_SUBMIT" });
+            sendToGuests({ type: "FORCE_SUBMIT" });
 
             setTimeout(() => {
               gameState.players.forEach((p) => {
@@ -904,19 +925,6 @@
         broadcastState();
       }
 
-      function handleGuestIncomingData(data) {
-        if (data.type === "STATE_UPDATE") {
-          gameState = data.gameState;
-          renderUI(gameState);
-        } else if (data.type === "TIMER_TICK") {
-          renderTimer(data.timeLeft);
-        } else if (data.type === "FORCE_SUBMIT") {
-          submitLocalAnswers();
-        } else if (data.type === "CHEAT_ALERT") {
-          showCheatAlert(data.msg);
-        }
-      }
-
       function setupHostUI() {
         document.getElementById("btn-start-spinner").classList.remove("hidden");
         document
@@ -979,9 +987,11 @@
         } else if (state.state === "SPINNER") {
           document.getElementById("sec-spinner").classList.remove("hidden");
           const activePicker = state.players[state.turnIndex];
-          document.getElementById("lbl-picker").innerText = activePicker.name;
+          document.getElementById("lbl-picker").innerText = activePicker
+            ? activePicker.name
+            : myName;
 
-          const isMyTurn = activePicker.id === myId;
+          const isMyTurn = activePicker && activePicker.id === myId;
           document
             .getElementById("btn-stop-spinner")
             .classList.toggle("hidden", !isMyTurn);
@@ -1141,7 +1151,7 @@
         if (isHost) {
           hostStopSpinner();
         } else {
-          hostConn.send({ type: "STOP_SPINNER" });
+          sendToHost({ type: "STOP_SPINNER" });
         }
       }
 
@@ -1155,7 +1165,7 @@
         if (isHost) {
           hostStartBastaTimer(myId, answers);
         } else {
-          hostConn.send({ type: "TRIGGER_BASTA", answers });
+          sendToHost({ type: "TRIGGER_BASTA", fromId: myId, answers });
         }
       }
 
@@ -1174,8 +1184,8 @@
 
         if (isHost) {
           gameState.answers[myId] = answers;
-        } else if (hostConn) {
-          hostConn.send({ type: "SUBMIT_ANSWERS", answers });
+        } else {
+          sendToHost({ type: "SUBMIT_ANSWERS", fromId: myId, answers });
         }
       }
 
@@ -1198,12 +1208,7 @@
             gameState.invalidFlags[category] = {};
           gameState.invalidFlags[category][targetId] = isInvalid;
           renderSelfReview(gameState);
-          hostConn.send({
-            type: "TOGGLE_INVALID",
-            category,
-            targetId,
-            isInvalid,
-          });
+          sendToHost({ type: "TOGGLE_INVALID", category, targetId, isInvalid });
         }
       }
     </script>
