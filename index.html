@@ -192,6 +192,35 @@
         display: none;
         font-weight: bold;
       }
+
+      /* Alerta de ¡BASTA! Flotante */
+      #basta-alert {
+        background: var(--warning);
+        color: #000;
+        padding: 16px 24px;
+        border-radius: 12px;
+        text-align: center;
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1100;
+        display: none;
+        font-weight: bold;
+        font-size: 1.15rem;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+        border: 2px solid #fff;
+        animation: pulseAlert 1s infinite alternate;
+      }
+      @keyframes pulseAlert {
+        0% {
+          transform: translateX(-50%) scale(1);
+        }
+        100% {
+          transform: translateX(-50%) scale(1.04);
+        }
+      }
+
       .timer-banner {
         background: var(--warning);
         color: #000;
@@ -303,6 +332,9 @@
     <!-- Alerta de Trampa -->
     <div id="cheat-alert">⚠️ <span id="cheat-msg"></span></div>
 
+    <!-- Alerta Flotante de Basta -->
+    <div id="basta-alert">🔔 <span id="basta-msg"></span></div>
+
     <div class="container">
       <h1>Basta!</h1>
 
@@ -337,7 +369,7 @@
         />
         <div style="display: flex; gap: 10px">
           <button id="btn-create" class="btn" onclick="createRoom()">
-            Crear Sala (Anfitrión)
+            Crear Sala
           </button>
           <button
             id="btn-join"
@@ -366,7 +398,7 @@
 
       <!-- RULETA DE LETRAS -->
       <div id="sec-spinner" class="card hidden">
-        <h2>GIRANDO ABECEDARIO</h2>
+        <h2>La letra para esta ronda es:</h2>
         <p>
           Turno de:
           <strong id="lbl-picker" style="color: var(--warning)"></strong> para
@@ -378,14 +410,14 @@
           class="btn hidden"
           onclick="stopSpinner()"
         >
-          ¡DETENER LETRA!
+          ¡BASTA!
         </button>
       </div>
 
       <!-- PANTALLA DE JUEGO -->
       <div id="sec-game" class="card hidden">
         <div id="timer-box" class="timer-banner hidden">
-          ⏰ ¡BASTA ACTIVADO! Tiempo restante: <span id="timer-val">10</span>s
+          ⏰ ¡BASTA! Tiempo restante: <span id="timer-val">10</span>s
         </div>
         <h2>
           Letra de la Ronda:
@@ -401,7 +433,7 @@
           style="background: var(--info); margin-bottom: 18px"
           onclick="hostRespin()"
         >
-          🔄 Saltar esta letra y girar de nuevo (Anfitrión)
+          🔄 Saltar esta letra y girar de nuevo
         </button>
 
         <div class="grid">
@@ -412,6 +444,7 @@
               id="cat-nombre"
               class="cat-input"
               data-cat="Nombre"
+              autocomplete="chrome-off"
             />
           </div>
           <div>
@@ -421,6 +454,7 @@
               id="cat-apellido"
               class="cat-input"
               data-cat="Apellido"
+              autocomplete="chrome-off"
             />
           </div>
           <div>
@@ -430,6 +464,7 @@
               id="cat-cosa"
               class="cat-input"
               data-cat="Cosa"
+              autocomplete="chrome-off"
             />
           </div>
           <div>
@@ -439,6 +474,7 @@
               id="cat-ciudad"
               class="cat-input"
               data-cat="Ciudad o País"
+              autocomplete="chrome-off"
             />
           </div>
           <div>
@@ -448,6 +484,7 @@
               id="cat-flor"
               class="cat-input"
               data-cat="Flor o Fruto"
+              autocomplete="chrome-off"
             />
           </div>
           <div>
@@ -457,6 +494,7 @@
               id="cat-animal"
               class="cat-input"
               data-cat="Animal"
+              autocomplete="chrome-off"
             />
           </div>
           <div>
@@ -466,6 +504,7 @@
               id="cat-color"
               class="cat-input"
               data-cat="Color"
+              autocomplete="chrome-off"
             />
           </div>
         </div>
@@ -635,6 +674,18 @@
         }, 4000);
       }
 
+      function showBastaAlert(playerName) {
+        const alertBox = document.getElementById("basta-alert");
+        if (alertBox) {
+          document.getElementById("basta-msg").innerText =
+            `¡${playerName} ha presionado BASTA! ⏰ Quedan 10 segundos.`;
+          alertBox.style.display = "block";
+          setTimeout(() => {
+            alertBox.style.display = "none";
+          }, 2000);
+        }
+      }
+
       function resetLobbyButtons() {
         const btnJoin = document.getElementById("btn-join");
         const btnCreate = document.getElementById("btn-create");
@@ -644,7 +695,7 @@
         }
         if (btnCreate) {
           btnCreate.disabled = false;
-          btnCreate.innerText = "Crear Sala (Anfitrión)";
+          btnCreate.innerText = "Crear Sala";
         }
       }
 
@@ -654,14 +705,13 @@
           return;
         }
 
-        const brokerUrl = ["wss:", "", "broker.emqx.io:8084", "mqtt"].join("/");
         if (mqttClient) {
           try {
             mqttClient.end(true);
           } catch (e) {}
         }
 
-        mqttClient = mqtt.connect(brokerUrl, {
+        mqttClient = mqtt.connect("wss://broker.emqx.io:8084/mqtt", {
           clientId: clientId,
           clean: true,
           connectTimeout: 6000,
@@ -810,10 +860,7 @@
         } else if (data.type === "SUBMIT_ANSWERS") {
           gameState.answers[data.fromId] = data.answers;
         } else if (data.type === "TOGGLE_INVALID") {
-          if (!gameState.invalidFlags[data.category])
-            gameState.invalidFlags[data.category] = {};
-          gameState.invalidFlags[data.category][data.targetId] = data.isInvalid;
-          broadcastState();
+          toggleInvalid(data.category, data.targetId, data.isInvalid);
         } else if (data.type === "REPORT_CHEAT") {
           const p = gameState.players.find((x) => x.id === data.fromId);
           broadcastCheat(p ? p.name : "Un jugador", data.reason);
@@ -826,6 +873,8 @@
           renderUI(gameState);
         } else if (data.type === "TIMER_TICK") {
           renderTimer(data.timeLeft);
+        } else if (data.type === "BASTA_ALERT") {
+          showBastaAlert(data.playerName);
         } else if (data.type === "FORCE_SUBMIT") {
           submitLocalAnswers();
         } else if (data.type === "CHEAT_ALERT") {
@@ -861,7 +910,6 @@
 
       function hostRespin() {
         if (!isHost) return;
-        // Remover la letra descartada del registro de esta ronda
         if (gameState.roundLetters && gameState.roundLetters.length > 0) {
           gameState.roundLetters.pop();
         }
@@ -876,6 +924,14 @@
         if (gameState.state !== "PLAYING") return;
         gameState.state = "COUNTDOWN";
         if (answers) gameState.answers[triggeredById] = answers;
+
+        const triggerPlayer = gameState.players.find(
+          (p) => p.id === triggeredById,
+        );
+        const triggerName = triggerPlayer ? triggerPlayer.name : "Un jugador";
+
+        showBastaAlert(triggerName);
+        sendToGuests({ type: "BASTA_ALERT", playerName: triggerName });
 
         let timeLeft = 10;
         sendToGuests({ type: "TIMER_TICK", timeLeft });
@@ -1059,7 +1115,6 @@
           document.getElementById("lbl-current-letter").innerText =
             state.currentLetter;
 
-          // Mostrar botón de volver a girar solo al Anfitrión
           const btnRespin = document.getElementById("btn-respin");
           if (btnRespin) {
             btnRespin.classList.toggle("hidden", !isHost);
@@ -1092,15 +1147,24 @@
         let html = `<div class="self-review-list">`;
         CATEGORIES.forEach((cat) => {
           const word = (myAnswers[cat] || "").trim();
-          const isInvalid = state.invalidFlags[cat]?.[myId];
+          const isEmpty = !word;
+          const isManuallyInvalid = state.invalidFlags[cat]?.[myId];
+          const isInvalid = isEmpty || isManuallyInvalid;
+
           const cssClass = isInvalid
             ? "self-review-item invalid"
             : "self-review-item";
+          const styleAttr = isEmpty
+            ? 'style="cursor: not-allowed; opacity: 0.7;"'
+            : "";
+          const clickAttr = isEmpty
+            ? ""
+            : `onclick="toggleMyAnswer('${cat}', ${!isManuallyInvalid})"`;
 
           html += `
-        <div class="${cssClass}" onclick="toggleMyAnswer('${cat}', ${!isInvalid})">
+        <div class="${cssClass}" ${styleAttr} ${clickAttr}>
           <span><strong>${cat}:</strong> ${word || "<em>(Sin respuesta)</em>"}</span>
-          <span>${isInvalid ? "❌ Inválida" : "✅ Válida"}</span>
+          <span>${isEmpty ? "❌ Vacío (0 pts)" : isInvalid ? "❌ Inválida" : "✅ Válida"}</span>
         </div>
       `;
         });
@@ -1124,15 +1188,23 @@
           html += `<tr><td><strong>${cat}</strong></td>`;
           state.players.forEach((p) => {
             const word = (state.answers[p.id]?.[cat] || "").trim();
+            const isEmpty = !word;
             const startsWithLetter = word
               .toUpperCase()
               .startsWith(state.currentLetter);
             const isManuallyInvalid = state.invalidFlags[cat]?.[p.id];
-            const isInvalid = !word || !startsWithLetter || isManuallyInvalid;
+            const isInvalid = isEmpty || !startsWithLetter || isManuallyInvalid;
 
             const cssClass = isInvalid ? "invalid-word" : "valid-word";
-            html += `<td class="${cssClass}" onclick="toggleInvalid('${cat}', '${p.id}', ${!isManuallyInvalid})">
-                  ${word || "<em>(Vacío)</em>"} ${isManuallyInvalid ? "❌" : ""}
+            const styleAttr = isEmpty
+              ? 'style="cursor: not-allowed; opacity: 0.6;"'
+              : "";
+            const clickAttr = isEmpty
+              ? ""
+              : `onclick="toggleInvalid('${cat}', '${p.id}', ${!isManuallyInvalid})"`;
+
+            html += `<td class="${cssClass}" ${styleAttr} ${clickAttr}>
+                  ${word || "<em>(Vacío)</em>"} ${isInvalid ? "❌" : "✅"}
                 </td>`;
           });
           html += `</tr>`;
@@ -1245,6 +1317,10 @@
       }
 
       function toggleInvalid(category, targetId, isInvalid) {
+        // Si la respuesta está vacía, no se permite cambiar a válida
+        const word = (gameState.answers[targetId]?.[category] || "").trim();
+        if (!word) return;
+
         if (isHost) {
           if (!gameState.invalidFlags[category])
             gameState.invalidFlags[category] = {};
