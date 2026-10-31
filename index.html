@@ -7,19 +7,16 @@
     <script>
       // Carga segura de la librería de red MQTT
       (function () {
-        const cdnUrl =
-          "https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js";
-        const fallbackUrl = "https://unpkg.com/mqtt@4.3.7/dist/mqtt.min.js";
-
         const script = document.createElement("script");
-        script.src = cdnUrl;
+        script.src =
+          "https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js";
         script.onload = function () {
           console.log("Sistema de red preparado");
           window.mqttLoaded = true;
         };
         script.onerror = function () {
           const fallbackScript = document.createElement("script");
-          fallbackScript.src = fallbackUrl;
+          fallbackScript.src = "https://unpkg.com/mqtt@4.3.7/dist/mqtt.min.js";
           fallbackScript.onload = function () {
             window.mqttLoaded = true;
           };
@@ -40,10 +37,12 @@
         --success: #10b981;
         --info: #3b82f6;
       }
+
       * {
         box-sizing: border-box;
         font-family: "Segoe UI", system-ui, sans-serif;
       }
+
       body {
         background: var(--bg);
         color: var(--text);
@@ -52,11 +51,13 @@
         display: flex;
         justify-content: center;
       }
+
       .container {
         width: 100%;
         max-width: 900px;
         margin-top: 30px;
       }
+
       .card {
         background: var(--card);
         border-radius: 12px;
@@ -64,6 +65,7 @@
         margin-bottom: 20px;
         box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
       }
+
       h1,
       h2,
       h3 {
@@ -85,6 +87,7 @@
         z-index: 100;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
       }
+
       .room-badge strong {
         color: var(--warning);
         font-size: 0.95rem;
@@ -100,6 +103,7 @@
         border-radius: 10px;
         overflow: hidden;
       }
+
       .score-rules-table th {
         background: #090d16;
         color: var(--text-muted);
@@ -108,6 +112,7 @@
         text-transform: uppercase;
         letter-spacing: 0.5px;
       }
+
       .score-rules-table td {
         background: #1e293b;
         padding: 12px;
@@ -130,14 +135,17 @@
         width: 100%;
         transition: 0.2s;
       }
+
       .btn:hover {
         background: var(--accent-hover);
       }
+
       .btn:disabled {
         background: #475569;
         color: #94a3b8;
         cursor: not-allowed;
       }
+
       input[type="text"] {
         width: 100%;
         padding: 12px;
@@ -154,10 +162,12 @@
         grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
         gap: 18px;
       }
+
       .grid div {
         display: flex;
         flex-direction: column;
       }
+
       .grid label {
         margin-bottom: 8px;
         font-size: 0.92rem;
@@ -179,45 +189,58 @@
         border-radius: 12px;
         padding: 20px;
       }
+
       #cheat-alert {
         background: var(--accent);
         color: white;
-        padding: 12px;
-        border-radius: 8px;
+        padding: 14px 20px;
+        border-radius: 12px;
         text-align: center;
-        position: fixed;
-        top: 15px;
-        right: 15px;
-        z-index: 1000;
+        position: fixed !important;
+        top: 15px !important;
+        left: 0;
+        right: 0;
+        margin: 0 auto;
+        width: 90%;
+        max-width: 450px;
+        z-index: 9999;
         display: none;
         font-weight: bold;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+        -webkit-transform: translateZ(0);
+        transform: translateZ(0);
       }
 
-      /* Alerta de ¡BASTA! Flotante */
       #basta-alert {
         background: var(--warning);
         color: #000;
-        padding: 16px 24px;
+        padding: 16px 20px;
         border-radius: 12px;
         text-align: center;
-        position: fixed;
-        top: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 1100;
+        position: fixed !important;
+        top: 15px !important;
+        left: 0;
+        right: 0;
+        margin: 0 auto;
+        width: 90%;
+        max-width: 450px;
+        z-index: 9999;
         display: none;
         font-weight: bold;
-        font-size: 1.15rem;
+        font-size: 1.1rem;
         box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
         border: 2px solid #fff;
+        -webkit-transform: translateZ(0);
+        transform: translateZ(0);
         animation: pulseAlert 1s infinite alternate;
       }
+      
       @keyframes pulseAlert {
         0% {
-          transform: translateX(-50%) scale(1);
+          transform: scale(1) translateZ(0);
         }
         100% {
-          transform: translateX(-50%) scale(1.04);
+          transform: scale(1.04) translateZ(0);
         }
       }
 
@@ -238,6 +261,7 @@
         padding: 0;
         margin: 20px 0;
       }
+
       .self-review-item {
         display: flex;
         justify-content: space-between;
@@ -250,9 +274,11 @@
         cursor: pointer;
         transition: 0.2s;
       }
+
       .self-review-item:hover {
         border-color: var(--info);
       }
+
       .self-review-item.invalid {
         text-decoration: line-through;
         color: var(--accent);
@@ -274,6 +300,7 @@
         z-index: 2000;
         padding: 20px;
       }
+
       .modal-content {
         background: var(--card);
         border-radius: 12px;
@@ -290,30 +317,36 @@
         border-collapse: collapse;
         margin-top: 16px;
       }
+
       table.review-tbl th,
       table.review-tbl td {
         border: 1px solid #475569;
         padding: 10px;
         text-align: center;
       }
+
       table.review-tbl th {
         background: #090d16;
       }
+
       .invalid-word {
         text-decoration: line-through;
         color: var(--accent);
         cursor: pointer;
         background: rgba(239, 68, 68, 0.1);
       }
+
       .valid-word {
         cursor: pointer;
       }
+
       .badge {
         background: var(--success);
         padding: 4px 8px;
         border-radius: 4px;
         font-size: 0.85rem;
       }
+
       .basta-hint {
         font-size: 0.85rem;
         color: var(--text-muted);
@@ -438,20 +471,20 @@
 
         <div class="grid">
           <div>
-            <label for="cat-nombre">Nombre</label
+            <label for="cat-nm">Nombre</label
             ><input
               type="text"
-              id="cat-nombre"
+              id="cat-nm"
               class="cat-input"
               data-cat="Nombre"
               autocomplete="chrome-off"
             />
           </div>
           <div>
-            <label for="cat-apellido">Apellido</label
+            <label for="cat-apll">Apellido</label
             ><input
               type="text"
-              id="cat-apellido"
+              id="cat-apll"
               class="cat-input"
               data-cat="Apellido"
               autocomplete="chrome-off"
@@ -468,10 +501,10 @@
             />
           </div>
           <div>
-            <label for="cat-ciudad">Ciudad o País</label
+            <label for="cat-cdd">Ciudad o País</label
             ><input
               type="text"
-              id="cat-ciudad"
+              id="cat-cdd"
               class="cat-input"
               data-cat="Ciudad o País"
               autocomplete="chrome-off"
